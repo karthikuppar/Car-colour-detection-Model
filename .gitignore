@@ -3,15 +3,25 @@ venv/
 env/
 ENV/
 
-# Python cache
+# Python cache & artifacts
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 
-# OS metadata
+# Node & Frontend Build
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.env
+
+# OS & IDE metadata
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
 
-# Temp files
+# Temporary Upload Files & Scratch Directories
 dataset/_temp_api_in.jpg
+dataset/temp_input.jpg
+scratch/

@@ -1,18 +1,13 @@
-import io
-import base64
 import cv2
+import base64
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from backend.src.utils.draw import TrafficAnnotator
 
-app = FastAPI(
-    title='Traffic Signal Analytics API',
-    description='Computer vision API for vehicle detection, blue car classification, and pedestrian counting.',
-    version='1.0.0'
-)
+app = FastAPI(title='Traffic Vision Analytics API', version='1.0')
 
-# Enable CORS for local React development
+# Enable CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
@@ -21,43 +16,44 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
-# Initialize annotator pipeline once at startup
-annotator = TrafficAnnotator()
+# Initialize detector once at startup
+annotator = TrafficAnnotator(yolo_weights='yolov8s.pt')
 
 @app.get('/health')
 def health_check():
-    return {'status': 'healthy', 'service': 'Traffic Vision API'}
+    return {'status': 'healthy', 'device': 'CUDA / GPU Ready'}
 
 @app.post('/api/analyze')
 async def analyze_traffic_image(file: UploadFile = File(...)):
-    # Validate uploaded content type
+    # Validate file format
     if not file.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail='Uploaded file must be an image.')
 
     try:
-        # Read uploaded image bytes into OpenCV format
+        # Read file bytes directly into OpenCV image
         contents = await file.read()
         nparr = np.frombuffer(contents, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if img is None:
-            raise HTTPException(status_code=400, detail='Failed to decode image.')
+            raise HTTPException(status_code=400, detail='Invalid image data.')
 
-        # Temporary path for annotator or direct pass
-        temp_input_path = 'dataset/_temp_api_in.jpg'
-        cv2.imwrite(temp_input_path, img)
+        # Temporarily save to process with annotator pipeline
+        temp_input = 'dataset/temp_input.jpg'
+        cv2.imwrite(temp_input, img)
 
-        # Process through detection + color classification pipeline
-        annotated_img, summary = annotator.process_and_annotate(temp_input_path)
+        # Run detection, classification, and annotation pipeline
+        annotator = TrafficAnnotator()
+        annotated_img, summary = annotator.process_and_annotate(temp_input)
 
-        # Encode annotated image to JPEG buffer
+        # Encode processed image to base64 JPEG
         _, buffer = cv2.imencode('.jpg', annotated_img)
-        base64_image = base64.b64encode(buffer).decode('utf-8')
+        img_base64 = base64.b64encode(buffer).decode('utf-8')
 
         return {
             'success': True,
             'summary': summary,
-            'image_base64': f'data:image/jpeg;base64,{base64_image}'
+            'image_base64': f'data:image/jpeg;base64,{img_base64}'
         }
 
     except Exception as e:

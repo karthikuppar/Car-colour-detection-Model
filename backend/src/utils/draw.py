@@ -1,12 +1,14 @@
 import cv2
 import numpy as np
+import importlib
 from ultralytics import YOLO
-from backend.src.classification.color_detector import CarColorDetector
+import backend.src.classification.color_detector as cd_module
 
 class TrafficAnnotator:
     def __init__(self, yolo_weights='yolov8s.pt'):
         self.detector = YOLO(yolo_weights)
-        self.color_classifier = CarColorDetector()
+        importlib.reload(cd_module)
+        self.color_classifier = cd_module.CarColorDetector()
 
         # Task colors: RED for blue cars, BLUE for other cars
         self.COLOR_RED = (0, 0, 255)
@@ -25,7 +27,7 @@ class TrafficAnnotator:
             conf=conf,
             iou=iou,
             agnostic_nms=True,
-            classes=[0, 2, 5, 7],
+            classes=[0, 1, 2, 3, 5, 7],
             imgsz=1280,
             verbose=False
         )[0]
@@ -50,18 +52,17 @@ class TrafficAnnotator:
             bw = x2 - x1
             bh = y2 - y1
 
-            # Case A: Pedestrian
-            # Upright human posture check: height must exceed width to prevent headrests/mirrors from being flagged
-            if cls_id == 0:
-                if bh < int(bw * 1.15) or bh < 24:
-                    continue  # Ignore squarish/wide reflections inside cars
+            # Case A: Pedestrian (Person = 0, Bicycle/Cyclist = 1)
+            if cls_id in [0, 1]:
+                if bh < 8 or bw < 4 or (bh * bw < 25):
+                    continue  # Ignore tiny noise artifacts
                 counts['people_count'] += 1
                 cv2.rectangle(img, (x1, y1), (x2, y2), self.COLOR_GREEN, 2)
                 cv2.putText(img, 'Person', (x1, max(y1 - 6, 12)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.45, self.COLOR_GREEN, 1, cv2.LINE_AA)
 
-            # Case B: Vehicles (car, bus, truck)
-            elif cls_id in [2, 5, 7]:
+            # Case B: Vehicles (car = 2, motorcycle = 3, bus = 5, truck = 7)
+            elif cls_id in [2, 3, 5, 7]:
                 counts['total_cars'] += 1
                 crop = img[y1:y2, x1:x2]
 
